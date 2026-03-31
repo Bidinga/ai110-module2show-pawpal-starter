@@ -4,8 +4,17 @@
 
 **a. Initial design**
 
-- Briefly describe your initial UML design.
-- What classes did you include, and what responsibilities did you assign to each?
+- My initial design focused on a strict object-oriented hierarchy to keep data modular and distinct. I mapped out a one-to-many relationship between Owners, Pets, and Tasks.
+
+What classes did you include, and what responsibilities did you assign to each?
+
+- Owner: Stores owner details and manages a list of Pet objects.
+
+ Pet: Holds pet-specific data (name, species, age, medical needs) and maintains a personal schedule of tasks.
+
+ Task: A data-heavy class representing an event (e.g., Feeding, Walk, Medication, Vet Appointment). It stores time, duration, priority level, and recurring status.
+
+ ScheduleManager: The central "brain" or controller class. It takes tasks across all pets, handles sorting, detects scheduling conflicts, and processes recurring task generation.
 
 **b. Design changes**
 
