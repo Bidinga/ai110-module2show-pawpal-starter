@@ -159,22 +159,63 @@ st.divider()
 st.subheader("Build Schedule")
 st.caption("This button should call your scheduling logic once you implement it.")
 
+# Filters to let the user focus the agenda
+pet_filter_options = ["All"] + [p.name for p in st.session_state.owner.pets] if st.session_state.owner.pets else ["All"]
+selected_pet_filter = st.selectbox("Filter agenda by pet", options=pet_filter_options)
+status_filter = st.selectbox("Show status", options=["All", "Pending", "Done"], index=0)
+
 if st.button("Generate schedule"):
     # regenerate scheduler view from owner tasks
     st.session_state.scheduler.clear()
     st.session_state.scheduler.ingest_owner(st.session_state.owner)
     today = date.today()
+
+    # get daily agenda (sorted by time via ScheduleManager)
     agenda = st.session_state.scheduler.get_daily_agenda(today)
+
     if not agenda:
         st.info("No scheduled tasks for today.")
     else:
-        # simple readable display
-        for t in agenda:
+        # apply UI filters using scheduler helper where possible
+        pet_name_filter = None if selected_pet_filter == "All" else selected_pet_filter
+        is_completed_filter = None
+        if status_filter == "Pending":
+            is_completed_filter = False
+        elif status_filter == "Done":
+            is_completed_filter = True
+
+        filtered = st.session_state.scheduler.filter_tasks(tasks=agenda, pet_name=pet_name_filter, is_completed=is_completed_filter, owner=st.session_state.owner)
+
+        # detect conflicts for today's occurrences and present warnings
+        collisions = st.session_state.scheduler.detect_conflicts_on_date(today)
+        if collisions:
+            st.warning(f"Detected {len(collisions)} conflict(s) in today's schedule.")
+            for a, b in collisions:
+                pet_a = st.session_state.owner.find_pet(a.pet_id)
+                pet_b = st.session_state.owner.find_pet(b.pet_id)
+                pa = pet_a.name if pet_a else "(unknown)"
+                pb = pet_b.name if pet_b else "(unknown)"
+                at = f"{a.start_time.strftime('%H:%M')}-{a.end_time.strftime('%H:%M')}" if a.start_time and a.end_time else "(unscheduled)"
+                bt = f"{b.start_time.strftime('%H:%M')}-{b.end_time.strftime('%H:%M')}" if b.start_time and b.end_time else "(unscheduled)"
+                st.warning(f"Conflict: '{a.title}' [{pa}] {at}  <->  '{b.title}' [{pb}] {bt}")
+        else:
+            st.success("No conflicts detected for today.")
+
+        # present the agenda as a tidy table
+        rows = []
+        for t in filtered:
             pet = st.session_state.owner.find_pet(t.pet_id) if t.pet_id else None
             pet_name = pet.name if pet else "(unknown)"
-            if t.start_time and t.end_time:
-                start = t.start_time.strftime("%H:%M")
-                end = t.end_time.strftime("%H:%M")
-                st.write(f"{start}-{end}: {t.title} [{pet_name}] — {t.task_type.value} — {t.priority.name}")
-            else:
-                st.write(f"(unscheduled) {t.title} [{pet_name}] — {t.task_type.value} — {t.priority.name}")
+            start = t.start_time.strftime('%H:%M') if t.start_time else ""
+            end = t.end_time.strftime('%H:%M') if t.end_time else ""
+            rows.append({
+                "time": f"{start}-{end}" if start or end else "(unscheduled)",
+                "task": t.title,
+                "pet": pet_name,
+                "type": t.task_type.value if t.task_type else "",
+                "priority": t.priority.name,
+                "recurring": "yes" if t.is_recurring else "no",
+                "status": "done" if t.is_completed else "pending",
+            })
+
+        st.table(rows)
