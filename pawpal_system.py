@@ -215,6 +215,58 @@ class ScheduleManager:
                 return True
         return False
 
+    def detect_conflicts_for_task(self, new_task: Task) -> List[Task]:
+        """Return a list of existing tasks that conflict with new_task.
+
+        Lightweight strategy: do not raise an exception; return a list (possibly empty)
+        of tasks that overlap. This allows callers to decide whether to warn the user,
+        reject the new task, or force-add it.
+
+        Only tasks with both start_time and end_time are considered. Recurring tasks
+        are compared using their stored times in the master schedule; callers can
+        expand occurrences for a particular date with `detect_conflicts_on_date`.
+
+        Args:
+            new_task: Task to check for overlaps against the master schedule.
+
+        Returns:
+            A list of Task objects from the master_schedule that overlap new_task.
+        """
+        conflicts: List[Task] = []
+        if not new_task.start_time or not new_task.end_time:
+            return conflicts
+        for t in self.master_schedule:
+            if t.start_time and t.end_time and t.overlaps_with(new_task):
+                conflicts.append(t)
+        return conflicts
+
+    def detect_conflicts_on_date(self, target_date: date) -> List[tuple]:
+        """Return list of (task_a, task_b) pairs that overlap on target_date among occurrences.
+
+        This expands recurring tasks into occurrences for the date and then checks
+        for pairwise overlaps. Use this when you want a daily view of collisions to
+        present friendly warnings in the UI or CLI.
+
+        Returns:
+            A list of tuples where each tuple is (Task, Task) representing two
+            occurrences that overlap on target_date.
+        """
+        occs: List[Task] = []
+        for t in self.master_schedule:
+            if t.start_time:
+                occ = t.occurrence_for_date(target_date)
+                if occ:
+                    occs.append(occ)
+        occs_sorted = self.sort_by_time(occs)
+        collisions: List[tuple] = []
+        for i in range(len(occs_sorted)):
+            for j in range(i+1, len(occs_sorted)):
+                a = occs_sorted[i]
+                b = occs_sorted[j]
+                if a.overlaps_with(b):
+                    collisions.append((a, b))
+        return collisions
+
     def get_daily_agenda(self, target_date: date) -> List[Task]:
         """Return concrete Task objects representing what happens on target_date.
 
@@ -235,13 +287,67 @@ class ScheduleManager:
         return sorted_occ + backlog
 
     def sort_tasks(self, tasks: List[Task]) -> List[Task]:
-        """Sort tasks by start time (earlier first) then by priority."""
+        """Sort tasks by start time (earlier first) then by priority.
+
+        This delegates to sort_by_time which demonstrates a compact key function.
+
+        Example:
+            sorted = manager.sort_tasks(list_of_tasks)
+        """
+        return self.sort_by_time(tasks)
+
+    def sort_by_time(self, tasks: List[Task]) -> List[Task]:
+        """Sort tasks primarily by start time then by priority.
+
+        Implementation notes:
+        - Tasks with concrete datetimes are ordered by their start_time.
+        - Tasks without start_time (unscheduled) are placed at the end.
+        - Priority is used as a secondary key (lower Priority.value means higher urgency).
+
+        This implementation is efficient (single call to sorted) and readable.
+        If your tasks were represented as "HH:MM" strings you could sort them with
+        ``sorted(times, key=lambda s: int(s.split(':')[0]) * 60 + int(s.split(':')[1]))``
+        but here we leverage datetime ordering directly.
+        """
         def key_fn(t: Task):
-            st = t.start_time if t.start_time is not None else datetime.max
-            # lower enum value => higher urgency (CRITICAL=1)
-            return (st, t.priority.value)
+            if t.start_time:
+                # minutes since midnight as a stable, human-friendly key
+                minutes = t.start_time.hour * 60 + t.start_time.minute
+                return (minutes, t.priority.value)
+            # unscheduled tasks go to the end
+            return (24 * 60 + 1, t.priority.value)
 
         return sorted(tasks, key=key_fn)
+
+    def filter_tasks(self, tasks: Optional[List[Task]] = None, pet_name: Optional[str] = None, is_completed: Optional[bool] = None, owner: Optional[Owner] = None) -> List[Task]:
+        """Filter tasks by pet name (requires owner) and/or completion status.
+
+        Behavior:
+        - If `tasks` is None, the master_schedule is used.
+        - If `pet_name` is supplied, a case-insensitive substring match is used
+          against pet names; matching pet IDs are used to filter tasks.
+        - If `is_completed` is supplied, tasks are filtered by their completion state.
+
+        Returns:
+            A filtered list of Task objects in stable order.
+
+        Examples:
+            # all pending tasks for pets whose name contains "mochi"
+            manager.filter_tasks(pet_name="mochi", is_completed=False, owner=owner)
+        """
+        lst = list(tasks) if tasks is not None else list(self.master_schedule)
+
+        result = lst
+        if pet_name and owner:
+            # find matching pet ids by name
+            matched_ids = [p.pet_id for p in owner.pets if pet_name.lower() in p.name.lower()]
+            result = [t for t in result if t.pet_id in matched_ids]
+
+        if is_completed is not None:
+            result = [t for t in result if t.is_completed == is_completed]
+
+        # keep stable order
+        return result
 
     # utility mutators
     def remove_task(self, task_id: str) -> bool:

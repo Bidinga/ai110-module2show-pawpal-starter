@@ -82,6 +82,46 @@ def main():
     scheduler = ScheduleManager()
     scheduler.ingest_owner(owner)
 
+    # Demo: create a task that conflicts with an existing scheduled task (t1 at 08:00-08:30)
+    t5 = Task(
+        task_id="t5",
+        title="Vet Phone Check",
+        task_type=TaskType.APPOINTMENT,
+        priority=Priority.HIGH,
+        start_time=datetime.combine(today, time(hour=8, minute=0)),
+        duration_minutes=20,
+    )
+    # assign to pet2 to show cross-pet conflict detection
+    pet2.assign_task(t5)
+
+    conflicts = scheduler.detect_conflicts_for_task(t5)
+    if conflicts:
+        print("\nWarning: new task conflicts with the following scheduled tasks:")
+        for c in conflicts:
+            pet = owner.find_pet(c.pet_id) if c.pet_id else None
+            pet_name = pet.name if pet else "(unknown)"
+            if c.start_time and c.end_time:
+                print(f"  - {c.task_id} ({c.title}) for {pet_name} at {c.start_time.strftime('%H:%M')}-{c.end_time.strftime('%H:%M')}")
+            else:
+                print(f"  - {c.task_id} ({c.title}) for {pet_name} (unscheduled)")
+
+    # Attempt to add; expect rejection because of conflict
+    added = scheduler.add_task_to_schedule(t5, allow_conflict=False)
+    print(f"Attempt to add task {t5.task_id}: {'added' if added else 'rejected due to conflict'}")
+
+    # Force-add another conflicting task to demonstrate override
+    t6 = Task(
+        task_id="t6",
+        title="Quick Check",
+        task_type=TaskType.OTHER,
+        priority=Priority.MEDIUM,
+        start_time=datetime.combine(today, time(hour=8, minute=0)),
+        duration_minutes=10,
+    )
+    pet1.assign_task(t6)
+    forced = scheduler.add_task_to_schedule(t6, allow_conflict=True)
+    print(f"Attempt to force-add task {t6.task_id}: {'added' if forced else 'rejected'}")
+
     # Print today's schedule
     print(f"Today's Schedule ({today.isoformat()}):\n")
     agenda = scheduler.get_daily_agenda(today)

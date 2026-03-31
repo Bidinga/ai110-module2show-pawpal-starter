@@ -34,8 +34,10 @@ I consciously shifted the ScheduleManager to be as stateless and algorithmic as 
 
 **b. Tradeoffs**
 
-- Describe one tradeoff your scheduler makes.
-- Why is that tradeoff reasonable for this scenario?
+- **Describe one tradeoff your scheduler makes.**
+  The scheduler strictly checks for exact time overlaps between task durations but does not account for transition or "buffer" time between different activities (e.g., the time it takes to drive back from the vet before starting a dog walk).
+- **Why is that tradeoff reasonable for this scenario?**
+  Accounting for transition times would require arbitrary buffer periods or complex location tracking that would overcomplicate the user input process. For a foundational CLI application, enforcing strict start/end time boundaries is perfectly sufficient to prevent basic double-booking without over-engineering the app.
 
 ---
 
