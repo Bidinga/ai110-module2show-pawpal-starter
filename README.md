@@ -52,3 +52,20 @@ PawPal+ now includes several small but important scheduling improvements to make
 - Conflict detection: lightweight overlap checks return a list of conflicting tasks so the app can warn the user rather than crashing. The scheduler supports both reject-on-conflict and force-add behaviors.
 
 These features are implemented in `pawpal_system.py` (see `ScheduleManager.sort_by_time`, `filter_tasks`, `get_daily_agenda`, and `detect_conflicts_for_task`).
+
+## Testing PawPal+
+
+Run the test suite with:
+
+```bash
+python -m pytest
+```
+
+What the tests cover:
+
+- Basic Task and Pet behaviors (assignment, completion)
+- Sorting correctness (chronological order with priority tie-breaks)
+- Recurring task expansion for daily agendas
+- Lightweight conflict detection and add/reject vs force-add behavior
+
+Confidence level: ★★★★☆ (4/5) — core behaviors are well-covered by tests; additional edge cases (long recurrence horizons, buffer/transition times, and large schedules) would increase confidence further.
